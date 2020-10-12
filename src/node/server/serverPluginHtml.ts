@@ -36,7 +36,7 @@ export const htmlRewritePlugin: ServerPlugin = ({
         const srcAttr = openTag.match(srcRE)
         if (srcAttr) {
           // register script as a import dep for hmr
-          const importee = resolver.normalizePublicPath(
+          const importee = resolver.normalizePublicPath通用化无ext路径(
             cleanUrl(path.posix.resolve('/', srcAttr[1] || srcAttr[2]))
           )
           debugHmr(`        ${importer} imports ${importee}`)

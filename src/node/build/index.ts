@@ -237,6 +237,8 @@ async function createVuePlugin(
 /**
  * Bundles the app for production.
  * Returns a Promise containing the build result.
+ * 返回包含build结果的Promise
+ * 这里是打包的入口
  */
 export async function build(options: BuildConfig): Promise<BuildResult> {
   const {
@@ -280,12 +282,17 @@ export async function build(options: BuildConfig): Promise<BuildResult> {
       spinner = require('ora')(msg + '\n').start()
     }
   }
+  // 清空output目录
   await fs.emptyDir(outDir)
 
+  // 入口只是 root/index.html
   const indexPath = path.resolve(root, 'index.html')
+  // publicPath
   const publicBasePath = base.replace(/([^/])$/, '$1/') // ensure ending slash
+  // 静态资源路径
   const resolvedAssetsPath = path.join(outDir, assetsDir)
 
+  // TODO: 这是啥？
   const resolver = createResolver(root, resolvers, alias)
 
   const { htmlPlugin, renderIndex } = await createBuildHtmlPlugin(

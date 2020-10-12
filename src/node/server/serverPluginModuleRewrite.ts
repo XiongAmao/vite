@@ -88,7 +88,7 @@ export const moduleRewritePlugin: ServerPlugin = ({
         // on the other hand, static import is guaranteed to have extension
         // because they must all have gone through module rewrite.
         const importer = removeUnRelatedHmrQuery(
-          resolver.normalizePublicPath(ctx.url)
+          resolver.normalizePublicPath通用化无ext路径(ctx.url)
         )
         ctx.body = rewriteImports(
           root,
@@ -275,7 +275,7 @@ export const resolveImport = (
     let { pathname, query } = resolver.resolveRelativeRequest(importer, id)
 
     // 2. resolve dir index and extensions.
-    pathname = resolver.normalizePublicPath(pathname)
+    pathname = resolver.normalizePublicPath通用化无ext路径(pathname)
 
     // 3. mark non-src imports
     if (!query && path.extname(pathname) && !jsSrcRE.test(pathname)) {

@@ -18,7 +18,8 @@ import { clientPublicPath } from './server/serverPluginClient'
 import chalk from 'chalk'
 import { isAsset } from './optimizer/pluginAssets'
 
-const debug = require('debug')('vite:resolve')
+//
+const debugLogger = require('debug')('vite:resolve')
 const isWin = require('os').platform() === 'win32'
 const pathSeparator = isWin ? '\\' : '/'
 
@@ -31,7 +32,7 @@ export interface Resolver {
 export interface InternalResolver {
   requestToFile(publicPath: string): string
   fileToRequest(filePath: string): string
-  normalizePublicPath(publicPath: string): string
+  normalizePublicPath通用化无ext路径(publicPath: string): string
   alias(id: string): string | undefined
   resolveRelativeRequest(
     publicPath: string,
@@ -44,20 +45,26 @@ export const supportedExts = ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json']
 export const mainFields = ['module', 'jsnext', 'jsnext:main', 'browser', 'main']
 
 const defaultRequestToFile = (publicPath: string, root: string): string => {
+  //  /^\/@modules\//.test 检查是否 开头为/@modules/
   if (moduleRE.test(publicPath)) {
+    // 替换调 /@modules/ ，剩余path就是id
     const id = publicPath.replace(moduleRE, '')
+    // 检查 id -> file 缓存
     const cachedNodeModule = moduleIdToFileMap.get(id)
     if (cachedNodeModule) {
       return cachedNodeModule
     }
+    // 检查优化过的module缓存
     // try to resolve from optimized modules
     const optimizedModule = resolveOptimizedModule(root, id)
     if (optimizedModule) {
       return optimizedModule
     }
+    // 检查node_modules cache缓存
     // try to resolve from normal node_modules
     const nodeModule = resolveNodeModuleFile(root, id)
     if (nodeModule) {
+      // 如果是node_modules内容，设置缓存
       moduleIdToFileMap.set(id, nodeModule)
       return nodeModule
     }
@@ -107,12 +114,13 @@ const resolveFilePathPostfix = (filePath: string): string | undefined => {
     const query = queryMatch ? queryMatch[0] : ''
     const resolved = cleanPath + postfix + query
     if (resolved !== filePath) {
-      debug(`(postfix) ${filePath} -> ${resolved}`)
+      debugLogger(`(postfix) ${filePath} -> ${resolved}`)
       return postfix
     }
   }
 }
 
+// 是否目录
 const isDir = (p: string) => fs.existsSync(p) && fs.statSync(p).isDirectory()
 
 export function createResolver(
@@ -121,33 +129,46 @@ export function createResolver(
   userAlias: Record<string, string> = {}
 ): InternalResolver {
   resolvers = [...resolvers]
+  // 替换后的文件alias的绝对路径
   const literalAlias: Record<string, string> = {}
+  // 替换后的目录alias的绝对路径
   const literalDirAlias: Record<string, string> = {}
 
+  // 处理alias alias 是一个object string: string
   const resolveAlias = (alias: Record<string, string>) => {
+    // 遍历key value
     for (const key in alias) {
+      // 每一个alias的值
       let target = alias[key]
       // aliasing a directory
+      // 如果是个绝对路径
       if (key.startsWith('/') && key.endsWith('/') && path.isAbsolute(target)) {
         // check first if this is aliasing to a path from root
         const fromRoot = path.join(root, target)
+        // 检查这个值是否存在于相对root的路径的目录
         if (isDir(fromRoot)) {
+          // 有，则拼接上root，做成绝对路径
           target = fromRoot
         } else if (!isDir(target)) {
+          // 否则跳过
           continue
         }
+        // 给resolvers 添加方法
         resolvers.push({
+          // 检查publicPath,如果能匹配到开头为alias的key，则将alias替换为绝对路径
           requestToFile(publicPath) {
             if (publicPath.startsWith(key)) {
               return path.join(target, publicPath.slice(key.length))
             }
           },
+          // 替换alias文件路径
           fileToRequest(filePath) {
             if (filePath.startsWith(target + pathSeparator)) {
               return slash(key + path.relative(target, filePath))
             }
           }
         })
+        //
         literalDirAlias[key] = target
       } else {
         literalAlias[key] = target
@@ -162,16 +183,19 @@ export function createResolver(
   })
   resolveAlias(userAlias)
 
+  //
   const requestToFileCache = new Map<string, string>()
   const fileToRequestCache = new Map<string, string>()
 
   const resolver: InternalResolver = {
     requestToFile(publicPath) {
+      // 从缓存拿
       if (requestToFileCache.has(publicPath)) {
         return requestToFileCache.get(publicPath)!
       }
 
       let resolved: string | undefined
+      // 从resolvers里面，遍历，拿到匹配到的第一个
       for (const r of resolvers) {
         const filepath = r.requestToFile && r.requestToFile(publicPath, root)
         if (filepath) {
@@ -179,6 +203,7 @@ export function createResolver(
           break
         }
       }
+      // 如果没有拿到
       if (!resolved) {
         resolved = defaultRequestToFile(publicPath, root)
       }
@@ -208,13 +233,14 @@ export function createResolver(
     },
 
     /**
+     * 处理不带.ext 的模糊路径
      * Given a fuzzy public path, resolve missing extensions and /index.xxx
      */
-    normalizePublicPath(publicPath) {
+    normalizePublicPath通用化无ext路径(publicPath) {
       if (publicPath === clientPublicPath) {
         return publicPath
       }
-      // preserve query
+      // preserve query 处理查询参数，提取无查询参数path
       const queryMatch = publicPath.match(/\?.*$/)
       const query = queryMatch ? queryMatch[0] : ''
       const cleanPublicPath = cleanUrl(publicPath)
@@ -429,6 +455,7 @@ export function resolveBareModuleRequest(
 
 const viteOptimizedMap = new Map()
 
+// 优化模块
 export function resolveOptimizedModule(
   root: string,
   id: string
@@ -476,7 +503,7 @@ export function resolveNodeModule(
     // see if the id is a valid package name
     pkgPath = resolveFrom(root, `${id}/package.json`)
   } catch (e) {
-    debug(`failed to resolve package.json for ${id}`)
+    debugLogger(`failed to resolve package.json for ${id}`)
   }
 
   if (pkgPath) {
@@ -514,7 +541,7 @@ export function resolveNodeModule(
       entryPoint = mapWithBrowserField(entryPoint, browserField)
     }
 
-    debug(`(node_module entry) ${id} -> ${entryPoint}`)
+    debugLogger(`(node_module entry) ${id} -> ${entryPoint}`)
 
     // save resolved entry file path using the deep import path as key
     // e.g. foo/dist/foo.js
